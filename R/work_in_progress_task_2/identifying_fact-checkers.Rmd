@@ -1,0 +1,80 @@
+---
+title: "Task 2 - identifying fact-checkers"
+author: "Justus v. Samson-Himmelstjerna"
+date: "2022-12-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+```
+
+## R Markdown
+```{r data}
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../../tracking/meof_usa_web_df.RDS")
+```
+
+```{r dummy}
+# Define the vector of commonly used fact checking websites in the US in late 2018
+fact_check_websites <- c("politifact", "factcheck", "snopes", "mediabiasfactcheck", "fullfact", "allsides", "poynter", "claimcheck")
+```
+
+```{r dummy}
+# Mutate the tracking_df dataframe to include a dummy variable and the corresponding string from the vector of fact-checking websites
+tracking_df_facts <- tracking_df %>%
+  mutate(
+    fact_check_usage = ifelse(grepl(paste(fact_check_websites, collapse = "|"), domain), 1, 0),
+    fact_check_site = case_when(
+      grepl("politifact", domain) ~ "politifact",
+      grepl("factcheck", domain) & !grepl("mediabias", domain) ~ "factcheck",
+      grepl("snopes", domain) ~ "snopes",
+      grepl("mediabiasfactcheck", domain) ~ "mediabiasfactcheck",
+      grepl("fullfact", domain) ~ "fullfact",
+      grepl("allsides", domain) ~ "allsides",
+      grepl("poynter", domain) ~ "poynter",
+      grepl("claimcheck", domain) ~ "claimcheck",
+      TRUE ~ NA_character_
+    )
+  )
+```
+
+```{r esxport tracking_df_facts}
+# Save tracking_df_facts to a file
+saveRDS(tracking_df_facts, file = "../../tracking/tracking_df_facts.RDS")
+```
+
+```{r compact tracking_df_facts}
+# Mutate the tracking_df dataframe to include a dummy variable and the corresponding string from the vector of fact-checking websites
+tracking_df_compact <- tracking_df_facts %>% select(personid, fact_check_usage, fact_check_site)
+```
+
+```{r esxport tracking_df_compact}
+# Save tracking_df_compact to a file
+saveRDS(tracking_df_compact, file = "../../tracking/tracking_df_compact.RDS")
+```
+
+```{r fact check summary}
+# Create a new data frame with only rows where fact_check_usage is equal to 1
+fact_check_summary <- tracking_df_facts %>%
+  filter(fact_check_usage == 1) %>%
+
+# Group the data by the fact_check_site column
+  group_by(fact_check_site) %>%
+
+# Summarize the data by calculating the total number of fact-check usage
+  # as well as the total and unique number of person IDs for all fact-check usage
+  summarise(
+    total_usage = sum(!is.na(personid)),
+    unique_usage = n_distinct(personid),
+  ) %>%
+
+# Remove the grouping variable
+  ungroup() %>%
+
+# Add a total row to the data frame
+  adorn_totals("row")
+  
+```

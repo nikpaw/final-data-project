@@ -1,0 +1,201 @@
+---
+title: "useful-survey-functions"
+author: "Paul Sharratt"
+date: "2022-12-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(janitor)
+library(haven)
+library(labelled)
+```
+
+## Useful Functions for Numerical Survey Data
+
+useful links: https://community.rstudio.com/t/writing-a-reusable-function-for-survey-questions-recoding/23222/2 & https://cran.r-project.org/web/packages/sjmisc/vignettes/recodingvariables.html
+
+
+```{r loading data}
+
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../../tracking/meof_usa_web_df.RDS")
+
+tracking_df_facts <- readRDS(file = "../../tracking/tracking_df_facts.RDS")
+
+tracking_df_only_facts <- tracking_df_facts %>%
+  select(personid, fact_check_usage, fact_check_site) %>%
+  unique()
+
+# combined survey & tracking data general
+tracking_survey_combined_facts <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage))
+
+# fact checkers
+tracking_survey_combined_facts_users <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage)) %>%
+  filter(fact_check_usage == 1)
+
+# not fact checkers
+tracking_survey_combined_facts_non <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage)) %>%
+  filter(fact_check_usage == 0)
+
+
+
+
+```
+
+
+```{r DISTRIBUTION FUNCTION FOR SURVEY QUESTIONS}
+
+show_distribution_original <- function(data, survey_item){
+  
+  # Save survey item as quoted object
+  survey_item_quotes <- deparse(substitute(survey_item))
+  
+  if(class(data[[survey_item_quotes]])[1] == "haven_labelled"){
+    data[[survey_item_quotes]] <- haven::as_factor(data[[survey_item_quotes]])
+    
+    # Create multiples plot
+    ggplot(data,
+           aes(x = {{survey_item}})) + # passing unquoted variables
+      
+      geom_bar() +
+      
+      scale_x_discrete()+
+      
+      labs(title = paste0(attributes(survey_df[[survey_item_quotes]])$label),
+       caption = "",
+       x = survey_item_quotes,
+       y = "frequency") +
+      
+      theme_light() +
+      theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+      
+      facet_wrap(~wave, nrow = 2)
+    
+    } else {
+      stop("input variable is not of type <dbl+lbl>")
+      }
+}
+
+
+show_distribution_original(tracking_survey_combined_facts_users, media_trust_2)
+show_distribution_original(tracking_survey_combined_facts_non, media_trust_2)
+
+[distrust_nyt] The New York Times 
+[distrust_wp] The Washington Post 
+[distrust_usat] USA Today 
+[distrust_cnn] CNN 
+[distrust_msnbc] MSNBC 
+[distrust_foxnews] Fox News 
+[distrust_breitbart] Breitbart 
+[distrust_buzzfeed] BuzzFeed 
+[distrust_huffpost] HuffPost 
+[distrust_infowars] InfoWars
+
+
+```
+
+
+
+
+
+```{r}
+survey_states_quotes <- deparse(substitute(survey_df$inputstate))
+  
+states <- haven::as_factor(survey_df$inputstate, levels = unique(survey_df$inputstate))
+
+c("dbl+lbl") %in% str(survey_df$inputstate)[1]
+
+states_2 <- attr(survey_df$inputstate, "label")
+
+?attr()
+```
+
+
+```{r }
+# Function for recoding Strongly agree questions
+agree_disagree_recode <- function(x) {
+  y <- ifelse(is.na(x), NA,
+              ifelse(x == 1, "Strongly disagree",
+                     ifelse(x == 2, "Disagree",
+                            ifelse(x == 3, "Agree", 
+                                   ifelse(x == 4, "Strongly agree", "Other")))))
+  
+  y <- factor(y, levels = c("Strongly disagree", "Disagree", "Agree", "Strongly agree", "Other"))
+  
+  return(y)
+}
+```
+
+```{r}
+#recoding yes/no/don't know answers - see votref column etc in survey_df
+yes_no_recode <- function(x) {
+  y <- ifelse(is.na(x), NA,
+              ifelse(x == 1, "Yes",
+                     ifelse(x == 2, "No",
+                            ifelse(x == 3, "Don't know", "Other"))))
+  
+  y <- factor(y, levels = c("Yes", "No", "Don't know", "Other"))
+  
+  return(y)
+}
+```
+
+
+```{r}
+#function for plotting party membership
+
+party_membership_function <- function(data, item) {
+# Group the data by survey wave and item
+survey_df_f <- data %>%
+  select(wave, all_of(item)) %>%
+  filter(item != 32766 | 32767) %>%
+  group_by(wave) %>%
+  summarise(democrats = sum(item == 1),
+            republicans = sum(item == 2),
+            independents = sum(item == 3))
+
+survey_df_all_waves_long <- pivot_longer(survey_df_f, c("democrats", "republicans", "independents"), names_to = "party", values_to = "count")
+
+# Creating the bar plots
+ggplot(data = survey_df_all_waves_long, aes(x = party, y = count)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~wave) +  
+  labs(title = paste0(item, ": ", attr(data[[item]], "label")),
+       x = "Answer options",
+       y = "Number of Respondents")
+}
+
+party_membership_function(survey_df, 'pid3')
+```
+
+
+
+```{r function for recoding party affiliation}
+party_affiliation_recode <- function(x) {
+  y <- ifelse(is.na(x), NA,
+              ifelse(x == 1, "Strong Democrat",
+                     ifelse(x == 2, "Not very strong Democrat",
+                            ifelse(x == 3, "Lean Democract",
+                                ifelse(x == 4, "Independent",
+                                     ifelse(x == 5, "Lean Republican",
+                                            ifelse(x == 6, "Not very strong Republican",
+                                                ifelse(x == 7, "Strong Republican",
+                                                    ifelse(x == 8, "Not sure", 'Other')))))))))
+  
+  y <- factor(y, levels = c("Strong Democrat", "Not very strong Democrat", "Lean Democract", "Independent", "Lean Republican", "Not very strong Republican", "Strong Republican", "Note sure", "Other"))
+  
+  return(y)
+}
+```
+
+

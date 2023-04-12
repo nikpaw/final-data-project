@@ -1,0 +1,93 @@
+
+```{r packages}
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(haven)
+library(labelled)
+
+
+library(lavaan)
+library(stats)
+library(psych)
+
+```
+
+You can include R code in the document as follows:
+
+```{r}
+# load data
+
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../../tracking/meof_usa_web_df.RDS")
+
+tracking_df_facts <- readRDS(file = "../../tracking/tracking_df_facts.RDS")
+
+tracking_df_only_facts <- tracking_df_facts %>%
+  select(personid, fact_check_usage, fact_check_site) %>%
+  unique()
+
+# combined survey & tracking data general
+tracking_survey_combined_facts <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage))
+
+# fact checkers
+tracking_survey_combined_facts_users <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage)) %>%
+  filter(fact_check_usage == 1)
+
+# not fact checkers
+tracking_survey_combined_facts_non <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage)) %>%
+  filter(fact_check_usage == 0)
+
+```
+
+```{r}
+# Template:
+## model <- 'outcome ~ x1 + x2 + x3'
+## pid3, accounts_twitter, polinfo_print
+model <- 'fact_check_usage ~ pid3 + accounts_twitter + polinfo_print'
+cfa_fit <- cfa(model, data = tracking_survey_combined_facts)
+```
+
+```{r}
+fit <- fitMeasures(cfa_fit)
+```
+
+
+```{r}
+plot(cfa_fit)
+```
+
+```{r}
+# omit info on specific fact-check page to have binary variable as last variable in dataframe
+tracking_survey_combined_facts_model <- tracking_survey_combined_facts %>%
+  select(-fact_check_site)
+
+
+
+numeric_df <- tracking_survey_combined_facts_model %>%
+  select_if(is.numeric) %>%
+  select(pid3, pid7, partypref, trust_nyt, trust_wp, trust_cnn, trust_foxnews, trust_breitbart, fact_check_usage) %>%
+  na.omit()
+
+# excluded: accounts_twitter, polinfo_print, polinfo_tv, polinfo_online, polinfo_radio, trust_infowars, 
+
+result <- factanal(numeric_df, factors = 3, rotation = "varimax")
+
+
+result$loadings
+result$communalities
+fa.diagram(result)
+```
+```{r}
+model_2 <- glm(fact_check_usage ~ pid3 + pid7 + partypref + trust_nyt + trust_wp + trust_cnn + trust_foxnews + trust_breitbart, data = numeric_df, family = binomial)
+summary(model_2)
+```
+

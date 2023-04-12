@@ -1,0 +1,134 @@
+---
+title: "1.1 - Identifying respondents"
+author: "Augusto Fonseca"
+date: "2022-12-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(ggplot2)
+library(scales)
+```
+
+## Task 1.1 - Identifying respondents’ YouGov navigation during the survey interval
+
+The web-tracking data coincides with the fielding of the fourth wave of the survey. Provide a visualization following the best practices illustrating the breakdown of the three groups in the data:
+• Survey respondents who visit “yougov” during the survey interval
+• Survey respondents who do not visit “yougov” during the survey interval
+• Participants who provided tracking data, but did not participate in the survey
+The visualization should function as a standalone figure, explaining what it shows. Note that the survey is a combination of local times from the respondents’ locations, and that on November 4, 2018, Daylight Saving Time ended in the U.S.
+
+```{r pressure, echo=FALSE}
+# upload initial databases
+
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../../tracking/meof_usa_web_df.RDS")
+timezones_df <- readRDS("../../time_zones/time_zones.RDS")
+survey_df_w4 <- filter(survey_df, wave == 4)
+
+```
+
+The question asks to identify respondents’ YouGov navigation during the survey interval.  The survey data frame contains a start time variable and an end time variable. To define the "survey interval", I will get the first start time (minimum start time)  and the last end-time (maximum end time) among the respondents during the 4th survey wave.
+
+Point of attention: The tracking data frame contains a variable that contains the time a person accessed a website in the UTC time zone. The time information presented in the survey data frame, on the other hand, is in local time. So, we need to convert it to the UTC timezone to allow any parsing.
+
+
+```{r, include = T}
+
+# Check the state and the time which the survey started.
+
+survey_start_state <- as_factor(survey_df_w4 %>%
+  select(starttime, inputstate) %>% 
+  filter(starttime == min(survey_df_w4$starttime)) %>% 
+  select(state = inputstate))
+
+survey_end_state <- as_factor(survey_df_w4 %>%
+  select(endtime, inputstate) %>% 
+  filter(endtime == max(survey_df_w4$endtime)) %>% 
+  select(state = inputstate))
+
+survey_start_time <- min(survey_df_w4$starttime) #UTC timezone
+survey_end_time <- max(survey_df_w4$endtime) #UTC timezone
+
+
+# join timezone DF to get the timezone based on the State name
+survey_start_state <- left_join(survey_start_state, timezones_df, by = "state") 
+survey_end_state <- left_join(survey_end_state, timezones_df, by = "state")
+
+#Using the timezone, convert the start-time and the end-time to UTC timezone
+survey_start_time <- with_tz(ymd_hms(survey_start_time, tz = survey_start_state$time_zone[1]), "UTC")
+survey_end_time <- with_tz(ymd_hms(survey_end_time, tz = survey_end_state$time_zone[1]), "UTC")
+
+# Considering that on November 4, 2018, Daylight Saving Time ended in the United States, just adjust the start time to disregard its effect. 
+
+survey_start_time <- survey_start_time - 3600 # Reduce 1 hour: 3600 seconds
+
+```
+
+
+```{r, include = T}
+# Joing data frames to filter the domains accessed during the survey interval
+df_yougov <- left_join(tracking_df %>% filter (used_at >= survey_start_time & used_at <= survey_end_time), survey_df_w4 %>% select(personid, wave, inputstate), by = "personid")
+
+#Fill NA in wave - For those who didn´t respond to the survey
+df_yougov$wave[is.na(df_yougov$wave)] <- 0
+
+# create a variable to check if the domain contains yougov
+df_yougov2 <- df_yougov %>% 
+  add_column(yougov = str_detect(df_yougov$domain,'yougov'))
+
+df_yougov2 <- df_yougov2 %>%
+  mutate(
+    respondents_class = case_when(
+    ((wave == 4) & (yougov == TRUE)) ~ "Respondent and accessed Yougov",
+    ((wave == 4) & (yougov == FALSE)) ~ "Respondent, but have not accessed Yougov",
+    (wave == 0) ~ "Not respondent, but accessed Yougov")
+    ) %>% 
+  mutate(
+    class_number = case_when(
+    ((wave == 4) &  (yougov == TRUE)) ~ 1,
+    ((wave == 4) & (yougov == FALSE)) ~ 2,
+    (wave == 0) ~ 3)
+    ) 
+
+# Create a DF to remove duplicates
+df_yougov3 <- df_yougov2 %>% 
+  select(personid,class_number, respondents_class) %>%
+  unique
+
+# order by the class and remove duplicated entries
+df_yougov3 <- df_yougov3[order(df_yougov3$personid, df_yougov3$class_number),]
+df_yougov3 <- df_yougov3 %>% distinct(personid, .keep_all = TRUE)
+
+
+df_yougov3 <- df_yougov3 %>% 
+  group_by(class_number, respondents_class) %>% 
+  summarise(num_ids = n())
+
+```
+
+
+```{r, include = T}
+
+
+# Bar plot with the share
+plot1 <- ggplot(df_yougov3, aes(x=class_number, y=num_ids, fill=respondents_class)) +
+  geom_bar(width = 1, stat = "identity")+
+  geom_text(aes(label=num_ids), vjust=-0.3, size=3.5)+
+  ggtitle("Respondents distribution during 4th survey wave")+
+  xlab("Type of respondent") +
+  ylab("Number of people")+
+  scale_fill_brewer(palette="Blues")+
+  theme_minimal()+
+  theme(panel.border = element_blank(),
+        panel.grid=element_blank(),
+        axis.ticks = element_blank(),
+        plot.title=element_text(size=14, face="bold"))
+print(plot1)
+
+
+```

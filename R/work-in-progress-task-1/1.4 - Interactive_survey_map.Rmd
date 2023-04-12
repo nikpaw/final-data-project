@@ -1,0 +1,164 @@
+---
+title: "1.4 - Interactive_survey_map"
+author: "Justus v. Samson-Himmelstjerna"
+date: "2022-12-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(zoo)
+library(leaflet)
+library(leaflet.extras)
+library(geojsonio)
+```
+
+## Task 1.4 - Interactive map of survey entries
+
+Create an interactive leaflet map divided by states that are colored in relation to a
+total number of survey responses across all waves, following good practice of
+visualization. For this plot you should:
+
+• employ a color palette based on the number range of survey entries.
+
+• use the Stamen.Toner tile.
+
+• create a popup that reads “Total survey responses for (State initials): (Number)”.
+
+```{r load data}
+# load data
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+```
+
+```{r clean data}
+# clean data in order to account for NAs in inputsate for people who most likely did not move in the meantime since they have only stated on state of residence
+
+fill_na <- function(x) {
+  # Check if the person has given exactly one state in the inputstate column
+  if (n_distinct(x) == 2) {
+    # Check if the person has given an NA in a later wave
+    if (any(is.na(x))) {
+      # Forward fill the NA values with the previous value in the inputstate column
+      x <- na.locf(x)
+    }
+  }
+  return(x)
+}
+
+# Group the dataframe by personid and apply the custom function to the inputstate column
+survey_df_cleaned <- survey_df %>%
+  group_by(personid) %>%
+  mutate(inputstate = fill_na(inputstate)) %>%
+  ungroup()
+```
+
+```{r survey responses}
+# Get the total number of survey responses by state
+survey_by_state <- survey_df_cleaned %>% 
+  group_by(inputstate) %>% 
+  summarise(total_responses = n()) %>% 
+  drop_na(inputstate)
+
+# change numbers to state names
+survey_by_state$inputstate <- 
+  case_when(survey_by_state$inputstate == 1 ~ "Alabama",
+            survey_by_state$inputstate == 2 ~ "Alaska",
+            survey_by_state$inputstate == 4 ~ "Arizona",
+            survey_by_state$inputstate == 5 ~ "Arkansas",
+            survey_by_state$inputstate == 6 ~ "California",
+            survey_by_state$inputstate == 8 ~ "Colorado",
+            survey_by_state$inputstate == 9 ~ "Connecticut",
+            survey_by_state$inputstate == 10 ~ "Delaware",
+            survey_by_state$inputstate == 11 ~ "District of Columbia",
+            survey_by_state$inputstate == 12 ~ "Florida",
+            survey_by_state$inputstate == 13 ~ "Georgia",
+            survey_by_state$inputstate == 15 ~ "Hawaii",
+            survey_by_state$inputstate == 16 ~ "Idaho",
+            survey_by_state$inputstate == 17 ~ "Illinois",
+            survey_by_state$inputstate == 18 ~ "Indiana",
+            survey_by_state$inputstate == 19 ~ "Iowa",
+            survey_by_state$inputstate == 20 ~ "Kansas",
+            survey_by_state$inputstate == 21 ~ "Kentucky",
+            survey_by_state$inputstate == 22 ~ "Louisiana",
+            survey_by_state$inputstate == 23 ~ "Maine",
+            survey_by_state$inputstate == 24 ~ "Maryland",
+            survey_by_state$inputstate == 25 ~ "Massachusetts",
+            survey_by_state$inputstate == 26 ~ "Michigan",
+            survey_by_state$inputstate == 27 ~ "Minnesota",
+            survey_by_state$inputstate == 28 ~ "Mississippi",
+            survey_by_state$inputstate == 29 ~ "Missouri",
+            survey_by_state$inputstate == 30 ~ "Montana",
+            survey_by_state$inputstate == 31 ~ "Nebraska",
+            survey_by_state$inputstate == 32 ~ "Nevada",
+            survey_by_state$inputstate == 33 ~ "New Hampshire",
+            survey_by_state$inputstate == 34 ~ "New Jersey",
+            survey_by_state$inputstate == 35 ~ "New Mexico",
+            survey_by_state$inputstate == 36 ~ "New York",
+            survey_by_state$inputstate == 37 ~ "North Carolina",
+            survey_by_state$inputstate == 38 ~ "North Dakota",
+            survey_by_state$inputstate == 39 ~ "Ohio",
+            survey_by_state$inputstate == 40 ~ "Oklahoma",
+            survey_by_state$inputstate == 41 ~ "Oregon",
+            survey_by_state$inputstate == 42 ~ "Pennsylvania",
+            survey_by_state$inputstate == 44 ~ "Rhode Island",
+            survey_by_state$inputstate == 45 ~ "South Carolina",
+            survey_by_state$inputstate == 46 ~ "South Dakota",
+            survey_by_state$inputstate == 47 ~ "Tennessee",
+            survey_by_state$inputstate == 48 ~ "Texas",
+            survey_by_state$inputstate == 49 ~ "Utah",
+            survey_by_state$inputstate == 50 ~ "Vermont",
+            survey_by_state$inputstate == 51 ~ "Virginia",
+            survey_by_state$inputstate == 53 ~ "Washington",
+            survey_by_state$inputstate == 54 ~ "West Virginia",
+            survey_by_state$inputstate == 55 ~ "Wisconsin",
+            survey_by_state$inputstate == 56 ~ "Wyoming",
+            survey_by_state$inputstate == 60 ~ "American Samoa",
+            survey_by_state$inputstate == 64 ~ "Federated States of Micronesia",
+            survey_by_state$inputstate == 66 ~ "Guam",
+            survey_by_state$inputstate == 68 ~ "Marshall Islands",
+            survey_by_state$inputstate == 69 ~ "Northern Mariana Islands",
+            survey_by_state$inputstate == 70 ~ "Palau",
+            survey_by_state$inputstate == 72 ~ "Puerto Rico",
+            survey_by_state$inputstate == 74 ~ "U.S. Minor Outlying Islands",
+            survey_by_state$inputstate == 78 ~ "Virgin Islands",
+            survey_by_state$inputstate == 81 ~ "Alberta",
+            survey_by_state$inputstate == 82 ~ "British Columbia",
+            survey_by_state$inputstate == 83 ~ "Manitoba",
+            survey_by_state$inputstate == 84 ~ "New Brunswick",
+            survey_by_state$inputstate == 85 ~ "Newfoundland",
+            survey_by_state$inputstate == 86 ~ "Northwest Territories",
+            survey_by_state$inputstate == 87 ~ "Nova Scotia",
+            survey_by_state$inputstate == 88 ~ "Nunavut",
+            survey_by_state$inputstate == 89 ~ "Ontario",
+            survey_by_state$inputstate == 90 ~ "Prince Edward Island",
+            survey_by_state$inputstate == 91 ~ "Quebec",
+            survey_by_state$inputstate == 92 ~ "Saskatchewan",
+            survey_by_state$inputstate == 93 ~ "Yukon Territory")
+
+# Create a new column for State initials
+survey_by_state$state_initials <- map_chr(survey_by_state$inputstate,
+                                        ~state.abb[match(.x, state.name)])
+# Adding DC since it had ben dropped for some reason
+survey_by_state$state_initials[9] <- "DC"
+
+# loading the data from JSON on US states
+states <- geojsonio::geojson_read("https://rstudio.github.io/leaflet/json/us-states.geojson", what = "sp")
+```
+
+```{r interactive leaflet map}
+# Create a color palette based on the number range of survey entries
+color_palette <- colorQuantile("YlOrRd", survey_by_state$total_responses,
+                               n = 9)
+
+# Create an interactive leaflet map divided by states
+leaflet(data = survey_by_state) %>%
+  addProviderTiles(providers$Stamen.Toner) %>%
+   addPolygons(data = states, 
+               fillColor = ~color_palette(survey_by_state$total_responses),
+               color = "white", weight = 0.5,
+              popup = paste("Total survey responses for",
+                            survey_by_state$state_initials,
+                            ":",
+                            survey_by_state$total_responses))
+# since the colorQuantile function is only able to give a legend as probability ranges in percentage (which I find confusing) therefore I have decided to not include a legend. The other option would be to use colorNumeric, however, this has the downside of giving a smaller colour range. This would decrease the informational value of the map in my opinion.```

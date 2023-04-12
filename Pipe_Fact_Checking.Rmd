@@ -1,0 +1,15 @@
+```{r data}
+survey_df <- readRDS("~//survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("~//tracking/meof_usa_web_df.RDS")
+```
+
+
+```{r}
+fact_check_websites <- c("politifact", "factcheck", "snopes", "mediabiasfactcheck", "fullfact", "allsides", "poynter", "claimcheck")
+
+fact_check_usage <- tracking_df %>%
+  filter(grepl(paste(fact_check_websites, collapse = "|"), domain)) %>%
+    group_by(domain) 
+```
+
+

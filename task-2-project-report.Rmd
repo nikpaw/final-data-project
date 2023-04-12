@@ -1,0 +1,124 @@
+---
+title: "_Comment is Free, but Fact-Checking is Sacred_"
+subtitle: "_Who Uses Fact-Checking Websites and Which Media  Do They Trust?_"
+author:
+  - Augusto Fonseca, A.Fonseca@students.hertie-school.org
+  - Justus von Samson, J.Samson@students.hertie-school.org
+  - Niklas Pawelzik, N.Pawelzik@students.hertie-school.org
+  - Paul Sharratt, P.Sharratt@students.hertie-school.org
+output: 
+  html_document:
+    toc: TRUE
+    df_print: paged
+    number_sections: FALSE
+    highlight: tango
+    theme: lumen
+    toc_depth: 4
+    toc_float: true
+    css: custom.css 
+    self_contained: false
+    includes:
+      after_body: project-footer.html
+---
+
+<style type="text/css">
+
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+  text-align: left;
+}
+h2.subtitle {
+  font-size: 30px;
+  color: DarkGrey;
+  text-align: center;
+}
+h4.author { /* Header 4 - and the author and data headers use this too  */
+    font-size: 12px;
+  color: DarkGrey;
+  text-align: left;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+-----------------------------------------------------------------------
+
+### Introduction
+
+Fact checking has become increasingly important in evaluating the reliability of information spread through various media channels, particularly in light of concerns about the spread of misinformation.
+
+Using data from the Media Exposure and Opinion Formation (MEOF) survey^[For more information about the MEOF project: https://simonmunzert.github.io/meof], fielded between April 2018 and October 2019, our group examined the users and use of fact checking websites in the United States.^[The project repo can be found here: https://github.com/intro-to-data-science-22/final-data-project-niklas-justus-paul] We divided respondents into two groups: those who used any of the fact checking websites below were considered "fact check users," while those who did not were considered "non-fact check users": 
+
+-   [AllSides](https://www.allsides.com/)
+-   [FactCheck.org](https://www.factcheck.org)
+-   [Media Bias /FactCheck](https://mediabiasfactcheck.com)
+-   [PolitiFact](https://www.politifact.com)
+-   [Snopes](https://www.snopes.com)
+-   [FullFact](https://fullfact.org)
+-   [Poynter](https://www.poynter.org)
+
+Our findings provide insights into the users and usage of fact checking websites, and trust in media in the United States.
+
+------------------------------------------------------------------------
+
+### What Demographics Are Represented Among Fact-Checkers?
+
+The demographics section of the MEOF study includes personal data about survey respondents, including their educational attainment level, income, gender, race, religion, state of residence, and many others. Our analysis found that certain demographic characteristics are more prevalent among fact-checkers than among non-fact-checkers, such as a higher proportion of women, higher total income, a higher proportion of atheists and agnostics, a higher proportion of retirees, and a higher representation in certain US states. It is important to consider these variations in context, as they likely contribute to the next sections examining the relationship between political preferences and media usage.
+
+------------------------------------------------------------------------
+
+### What Are Fact-Checkers' Political Preferences?
+
+Political preferences within the groups we studied were divided between members of the Democratic Party and the Republican Party. A higher proportion of fact-checkers identified as Democrats compared to non-fact checkers. The largest subgroup within the Democrats was those who identified very strongly as Democrats. Democrats also made up the largest group in both the fact-checker and non-fact checker groups in terms of party _preferences_. The map below illustrates the distribution of party identification among fact-checkers and non-fact checkers in each state, with the Democrat fact-checkers having a stronger presence across most states.
+
+```{r, echo=F, toc=F, fig.align='center', fig.cap = "Figure 1: Mapping Fact Check Usage & Fact-Checkers' Party Affiliation in the USA"}
+#map
+knitr::include_url("R/work_in_progress_task_2/map.html")
+
+
+```
+
+
+We found no significant differences between fact-checkers and non-fact checkers in terms of their political interests or attentiveness to current events. We also explored various background traits, such as gun ownership, bilingualism, travel outside of the US, family in the military, and attendance at political rallies, and found no significant differences between the two groups. This suggests that these traits may not have a significant impact on an individual's use of fact-checking sites.
+
+------------------------------------------------------------------------
+
+### Which Media Do Our Groups Use?
+
+#### Traditional Media
+
+Fact-checkers tend to watch TV more frequently, with a higher proportion watching once a day or several times a day compared to non-fact checkers. They are also more likely to get political information from newspapers or print magazines. Radio usage was similar between the two groups. In terms of specific news shows or channels, non-fact checkers are more likely to watch CBS Evening News daily, while a higher proportion of fact-checkers watch NBC. This suggests that the sources and methods individuals use to stay informed about politics may influence their fact-checking practices.
+
+#### Social Media
+
+Regarding social media, we found that fact-checkers are slightly more likely to be Twitter users, while Facebook, Instagram, LinkedIn, Snapchat, and WhatsApp use accounted for no differences. Interestingly, fact-checkers were slightly less likely to be LinkedIn users, and slightly more likely to be Reddit users. Having no social media accounts at all made no difference to membership of either group.
+
+##### Twitter
+
+On Twitter, fact-checkers are more likely to come across political news or conversations from friends, relatives, politicians, parties, or political campaigns, as well as people they follow but are not acquainted with. There was no difference in exposure to news organizations, journalists, or companies between the two groups.
+
+##### Facebook 
+
+On Facebook, we found that fact-checkers are more likely to see political news or conversations from friends, relatives, or acquaintances, and are also more likely to see political news or conversations from people they follow but are not acquainted with. Non-fact checkers, on the other hand, are more likely to not be exposed to political news or conversations from news organizations, journalists, politicians, parties, or political campaigns, or from companies.
+
+------------------------------------------------------------------------
+
+### Which Media Do Fact-Checkers Trust?
+
+We found that fact-checkers are more likely to frequently use online media and have higher levels of trust in The New York Times, the Washington Post, CNN, MSNBC, and Huffington Post. They also have lower levels of trust in Fox News and Breitbart, with a decrease in trust over time for both organizations. Buzzfeed had slightly higher levels of trust among fact-checkers, while trust in InfoWars was low for both groups, with fact-checkers being much less likely to trust it. Trust in InfoWars decreased over the course of the survey for both groups. 
+
+```{r, echo=F, toc=F, fig.align='center', fig.cap = "Table 1: Trust in Media for Fact Checkers & Non-Fact Checkers All Waves of the Survey"}
+#bar chart of trust
+knitr::include_graphics("images/trust-in-media.png")
+
+
+```
+
+------------------------------------------------------------------------
+
+### Conclusions
+
+Overall, our study found that Democrats made up the largest group in both the fact-checking and non-fact-checking groups, with a higher proportion of Democrats among the fact-checkers. However, there was no significant difference between the two groups in terms of political interests or background traits. These findings suggest that Democrats, particularly those who identify as "very strong Democrats," may be more likely to use fact-checking websites. Fact-checkers also had a higher level of trust in certain news organizations, such as The New York Times, the Washington Post, CNN, MSNBC, and Huffington Post, while non-fact checkers had no significant difference in trust in these organizations. Fact-checkers were also less likely to trust Fox News and Breitbart News, with a decrease in trust over time for both of these organizations. This suggests that fact-checkers may be more discerning in their media trust and consumption, while non-fact checkers may be more reliant on a specific set of news shows or channels. It is, however, important to note that these findings are based on a very specific data set and may not be representative of the US population as a whole.

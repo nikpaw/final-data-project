@@ -1,0 +1,187 @@
+---
+title: "visual-data-exploration"
+author: "Paul Sharratt"
+date: "2022-12-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(ggplot2)
+library(ggcorrplot)
+library(likert)
+library(plyr)
+install.packages("reshape2")
+library(reshape2)
+```
+
+```{r data}
+survey_df <- readRDS("../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../tracking/meof_usa_web_df.RDS")
+```
+
+potentially useful link: https://ladal.edu.au/surveys.html#4_Visualizing_survey_data
+
+```{r web usage}
+# number of visits per website
+breitbart_use <- tracking_df[tracking_df$domain=='breitbart' | grepl('breitbart',tracking_df$domain),]
+snopes_use <- tracking_df[tracking_df$domain=='snopes' | grepl('snopes',tracking_df$domain),]
+politifact_use <- tracking_df[tracking_df$domain=='politifact' | grepl('politifact',tracking_df$domain),]
+factcheck_use <- tracking_df[tracking_df$domain=='factcheck' | grepl('factcheck',tracking_df$domain) & !grepl("mediabias", tracking_df$domain),]
+
+# total number of unique visitors in the data set
+unique_personid_total <- length(unique(tracking_df$personid))
+
+# number of unique visitors
+unique_personid_breitbard <- length(unique(breitbart_use$personid))
+unique_personid_snopes <- length(unique(snopes_use$personid))
+unique_personid_politifact <- length(unique(politifact_use$personid))
+unique_personid_factcheck <- length(unique(factcheck_use$personid))
+```
+
+```{r fact_check_websites}
+# list of commonly used fact checking websites in the US in late 2018
+fact_check_websites <- c("politifact", "factcheck", "snopes", "mediabiasfactcheck", "fullfact", "allsides", "poynter", "claimcheck")
+
+fact_check_usage <- tracking_df %>%
+  filter(grepl(paste(fact_check_websites, collapse = "|"), domain)) %>%
+    group_by(domain) %>%
+  summarise(
+    politifact = case_when(grepl("politifact", domain) ~ domain, TRUE ~ NA_character_),
+    factcheck = case_when(grepl("factcheck", domain) & !grepl("mediabias", domain) ~ domain, TRUE ~ NA_character_),
+    snopes = case_when(grepl("snopes", domain) ~ domain, TRUE ~ NA_character_),
+    mediabiasfactcheck = case_when(grepl("mediabiasfactcheck", domain) ~ domain, TRUE ~ NA_character_),
+    fullfact = case_when(grepl("fullfact", domain) ~ domain, TRUE ~ NA_character_),
+    allsides = case_when(grepl("allsides", domain) ~ domain, TRUE ~ NA_character_),
+    poynter = case_when(grepl("poynter", domain) ~ domain, TRUE ~ NA_character_),
+    claimcheck = case_when(grepl("claimcheck", domain) ~ domain, TRUE ~ NA_character_)
+  ) %>% 
+  summarise(
+    politifact = sum(!is.na(politifact)),
+    factcheck = sum(!is.na(factcheck)),
+    snopes = sum(!is.na(snopes)),
+    mediabiasfactcheck = sum(!is.na(mediabiasfactcheck)),
+    fullfact = sum(!is.na(fullfact)),
+    allsides = sum(!is.na(allsides)),
+    poynter = sum(!is.na(poynter)),
+    claimcheck = sum(!is.na(claimcheck))
+  )
+
+```
+
+```{r visual exploration - demographics}
+
+# total number of participants = 1507
+n_distinct(survey_df$personid)
+
+```
+
+```{r}
+
+
+```
+
+
+```{r visual exploration - politics}
+
+#comparing the use of commonly used fact checking websites in the US in late 2018 in a bar plot
+
+
+####### PARTY IDENTIFICATION IN WAVE 1
+
+party_id_w1 <- survey_df %>%
+  select(pid3, wave, personid) %>%
+  filter(pid3 != 32766 | 32767) %>%
+  filter(wave == 1)
+
+dem_count_w1 <- sum(party_id_w1$pid3 == 1)
+rep_count_w1 <- sum(party_id_w1$pid3 == 2)
+indp_count_w1 <- sum(party_id_w1$pid3 == 3)
+counts_w1 <- c(dem_count_w1, rep_count_w1, indp_count_w1)
+
+parties <- c("Democrat", "Republican", "Independent")
+
+barplot(counts_w1, names.arg=parties)
+
+
+###### PARTY IDENTIFICATION IN WAVE 2
+# NOTE: just to see if there's any change in affiliation over time.
+# Republicans actually lose party members like ~30 members between wave 1 and wave 8
+
+party_id_w8 <- survey_df %>%
+  select(pid3, wave, personid) %>%
+  filter(pid3 != 32766 | 32767) %>%
+  filter(wave == 8)
+
+dem_count_w8 <- sum(party_id_w8$pid3 == 1)
+rep_count_w8 <- sum(party_id_w8$pid3 == 2)
+indp_count_w8 <- sum(party_id_w8$pid3 == 3)
+counts_w8 <- c(dem_count_w8, rep_count_w8, indp_count_w8)
+
+parties_w8 <- c("Democrat", "Republican", "Independent")
+
+barplot(counts_w8, names.arg=parties)
+
+
+
+
+```
+```{r plotting strength of party affiliation using pid7 using Likert}
+
+party_identification <- select(survey_df, starts_with(c("pid7")))
+
+# Rename the items so that the question statement becomes the name
+names(party_identification) <- c(
+  pid7="Party identification, 7 point")
+
+# A custom function to recode numerical responses into ordered factors
+likert_recode_affiliation <- function(x) {
+  y <- ifelse(is.na(x), NA,
+              ifelse(x == 1, "Strong Democrat",
+                     ifelse(x == 2, "Not very strong Democrat",
+                            ifelse(x == 3, "Lean Democract",
+                                ifelse(x == 4, "Independent",
+                                     ifelse(x == 5, "Lean Republican",
+                                            ifelse(x == 6, "Not very strong Republican",
+                                                ifelse(x == 7, "Strong Republican",
+                                                    ifelse(x == 8, "Not sure", 'Other')))))))))
+  
+  y <- factor(y, levels = c("Strong Democrat", "Not very strong Democrat", "Lean Democract", "Independent", "Lean Republican", "Not very strong Republican", "Strong Republican", "Not sure"))
+  
+  return(y)
+}
+
+
+# Transform the items into factors and save the data set as a likert object
+party_identification_likert <- party_identification %>%
+  mutate_all(likert_recode) %>%
+  likert()
+
+# Create a stacked bar chart
+plot(party_identification_likert, 
+     # Group the items alphabetically
+     group.order=names(party_identification),
+     # Plot the percentages for each response category
+     plot.percents = TRUE,
+     # Plot the total percentage for negative responses
+     plot.percent.low = FALSE,
+     # Plot the total percentage for positive responses
+     plot.percent.high = FALSE,
+     # Whether response categories should be centered
+     # This is only helpful when there is a middle response
+     # option such as "neutral" or "neither agree nor disagree"
+     centered = FALSE,
+     # Wrap label text for item labels
+     wrap=30)
+
+
+```
+
+
+```{r}
+
+```
+

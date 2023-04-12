@@ -1,0 +1,127 @@
+---
+title: "visualization-media-trust"
+author: "Niklas Pawelzik"
+date: "2022-12-20"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(haven)
+library(labelled)
+library(scales)
+
+```
+
+```{r}
+# load data
+
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../../tracking/meof_usa_web_df.RDS")
+
+tracking_df_facts <- readRDS(file = "../../tracking/tracking_df_facts.RDS")
+
+tracking_df_only_facts <- tracking_df_facts %>%
+  select(personid, fact_check_usage, fact_check_site) %>%
+  unique()
+
+# combined survey & tracking data general
+tracking_survey_combined_facts <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage))
+
+# fact checkers
+tracking_survey_combined_facts_users <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage)) %>%
+  filter(fact_check_usage == 1)
+
+# not fact checkers
+tracking_survey_combined_facts_non <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage)) %>%
+  filter(fact_check_usage == 0)
+```
+
+```{r}
+# create dataframe (only) with data needed
+tracking_survey_combined_facts_graph_data <- tracking_survey_combined_facts %>%
+  select(wave, fact_check_usage, trust_nyt, trust_wp, trust_cnn, trust_foxnews, trust_breitbart, trust_infowars) %>%
+  # filter for waves covered: 1 and 4
+  filter(wave == 1 | wave == 4) %>%
+  # create variable "media" to include into facet graph distinguishing different media
+    pivot_longer(cols = starts_with("trust_"), names_to = "media", names_prefix = "trust_", values_to = "trust_indicated", values_drop_na = TRUE) 
+
+
+tracking_survey_combined_facts_graph_data$trust_indicated <- replace(tracking_survey_combined_facts_graph_data$trust_indicated, tracking_survey_combined_facts_graph_data$trust_indicated == 2, 0)
+
+
+tracking_survey_combined_facts_graph_data<-tracking_survey_combined_facts_graph_data%>%
+  mutate(trust_2 = case_when(trust_indicated == 1~ 1,
+                             trust_indicated == 0 ~0))
+
+
+tracking_survey_combined_facts_graph_data <- tracking_survey_combined_facts_graph_data%>%
+  mutate(media_fact_check = case_when(
+    media == "breitbart" & fact_check_usage == 1 ~ "Breitbart (fact-checker)",
+    media == "breitbart" & fact_check_usage == 0 ~ "Breitbart (no fact-checker)",
+    media == "infowars" & fact_check_usage == 1 ~ "Infowars (fact-checker)",
+    media == "infowars" & fact_check_usage == 0 ~ "Infowars (no fact-checker)",
+    media == "cnn" & fact_check_usage == 1 ~ "CNN (fact-checker)",
+    media == "cnn" & fact_check_usage == 0 ~ "CNN (no fact-checker)",
+    media == "nyt" & fact_check_usage == 1 ~ "NYT (fact-checker)",
+    media == "nyt" & fact_check_usage == 0 ~ "NYT (no fact-checker)",
+    media == "wp" & fact_check_usage == 1 ~ "Wash. Post (fact-checker)",
+    media == "wp" & fact_check_usage == 0 ~ "Wash. Post (no fact-checker)",
+    media == "foxnews" & fact_check_usage == 1 ~ "Foxnews (fact-checker)",
+    media == "foxnews" & fact_check_usage == 0 ~ "Foxnews (no fact-checker)"))
+
+
+share_media_trust <- tracking_survey_combined_facts_graph_data %>%
+  group_by(media_fact_check, trust_indicated)%>%
+  summarize(n= n())
+  
+
+share_media_trust<-share_media_trust%>%
+  mutate(trust_2 = case_when(trust_indicated == 1~ 1,
+                             trust_indicated == 0 ~0))
+
+
+share_media_trust$trust_2 <- factor(share_media_trust$trust_2, levels = c(0, 1), labels = c("No trust indicated","Trust indicated"))
+
+df_sum <- share_media_trust %>%
+  group_by(media_fact_check) %>%
+  summarise(cases = sum(n))
+
+share_media_trust <- left_join(share_media_trust, df_sum, by = "media_fact_check")
+
+share_media_trust$share_trust <- share_media_trust$n/share_media_trust$cases
+          
+```
+
+```{r}
+
+share_media_trust%>%
+ggplot( aes(x = media_fact_check, y = share_trust, fill = trust_2)) +
+    geom_bar(stat = "identity", alpha = .6, width = .4, position = "stack") +
+    coord_flip() +
+  labs(
+    title = "Trust in Media for Fact Checkers & Non-Fact Checkers",
+    x = "Media (Respondent Group)",
+    y = "Share per Respondent Group",
+    fill = "Indication of Trust")
+# + facet_wrap("wave")
+# + theme_minimal()
+
+# +
+  # facet_wrap("wave") 
+  # facet_grid(media ~ wave)
+```
+
+
+
+

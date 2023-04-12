@@ -1,0 +1,101 @@
+---
+title: "first_wrangling"
+author: "Justus v. Samson-Himmelstjerna"
+date: "2022-12-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+```{r data}
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../../tracking/meof_usa_web_df.RDS")
+```
+
+```{r web usage}
+# number of visits per website
+breitbart_use <- tracking_df[tracking_df$domain=='breitbart' | grepl('breitbart',tracking_df$domain),]
+snopes_use <- tracking_df[tracking_df$domain=='snopes' | grepl('snopes',tracking_df$domain),]
+politifact_use <- tracking_df[tracking_df$domain=='politifact' | grepl('politifact',tracking_df$domain),]
+factcheck_use <- tracking_df[tracking_df$domain=='factcheck' | grepl('factcheck',tracking_df$domain) & !grepl("mediabias", tracking_df$domain),]
+
+# total number of unique visitors in the data set
+unique_personid_total <- length(unique(tracking_df$personid))
+
+# number of unique visitors
+unique_personid_breitbard <- length(unique(breitbart_use$personid))
+unique_personid_snopes <- length(unique(snopes_use$personid))
+unique_personid_politifact <- length(unique(politifact_use$personid))
+unique_personid_factcheck <- length(unique(factcheck_use$personid))
+```
+
+```{r fact_check_websites}
+# Define the vector of commonly used fact checking websites in the US in late 2018
+fact_check_websites <- c("politifact", "factcheck", "snopes", "mediabiasfactcheck", "fullfact", "allsides", "poynter", "claimcheck")
+
+fact_check_usage <- tracking_df %>%
+  filter(grepl(paste(fact_check_websites, collapse = "|"), domain)) %>%
+    group_by(domain) %>%
+  summarise(
+    politifact = case_when(grepl("politifact", domain) ~ domain, TRUE ~ NA_character_),
+    factcheck = case_when(grepl("factcheck", domain) & !grepl("mediabias", domain) ~ domain, TRUE ~ NA_character_),
+    snopes = case_when(grepl("snopes", domain) ~ domain, TRUE ~ NA_character_),
+    mediabiasfactcheck = case_when(grepl("mediabiasfactcheck", domain) ~ domain, TRUE ~ NA_character_),
+    fullfact = case_when(grepl("fullfact", domain) ~ domain, TRUE ~ NA_character_),
+    allsides = case_when(grepl("allsides", domain) ~ domain, TRUE ~ NA_character_),
+    poynter = case_when(grepl("poynter", domain) ~ domain, TRUE ~ NA_character_),
+    claimcheck = case_when(grepl("claimcheck", domain) ~ domain, TRUE ~ NA_character_)
+  ) %>% 
+  summarise(
+    politifact = sum(!is.na(politifact)),
+    factcheck = sum(!is.na(factcheck)),
+    snopes = sum(!is.na(snopes)),
+    mediabiasfactcheck = sum(!is.na(mediabiasfactcheck)),
+    fullfact = sum(!is.na(fullfact)),
+    allsides = sum(!is.na(allsides)),
+    poynter = sum(!is.na(poynter)),
+    claimcheck = sum(!is.na(claimcheck))
+  ) %>% adorn_totals("row")
+
+```
+
+```{r dummy}
+
+# Mutate the tracking_df dataframe to include a dummy variable and the corresponding string from the vector of fact-checking websites
+tracking_df_facts <- tracking_df %>%
+  mutate(
+    fact_check_usage = ifelse(grepl(paste(fact_check_websites, collapse = "|"), domain), 1, 0),
+    fact_check_site = case_when(
+      grepl("politifact", domain) ~ "politifact",
+      grepl("factcheck", domain) & !grepl("mediabias", domain) ~ "factcheck",
+      grepl("snopes", domain) ~ "snopes",
+      grepl("mediabiasfactcheck", domain) ~ "mediabiasfactcheck",
+      grepl("fullfact", domain) ~ "fullfact",
+      grepl("allsides", domain) ~ "allsides",
+      grepl("poynter", domain) ~ "poynter",
+      grepl("claimcheck", domain) ~ "claimcheck",
+      TRUE ~ NA_character_
+    )
+  )
+```
+
+```{r fact check summary}
+fact_check_summary <- tracking_df_facts %>%
+  filter(fact_check_usage == 1) %>%
+  group_by(fact_check_site) %>%
+  summarise(
+    total_usage = sum(!is.na(personid)),
+    unique_usage = n_distinct(personid),
+  ) %>%
+  ungroup() %>%
+  adorn_totals("row")
+```

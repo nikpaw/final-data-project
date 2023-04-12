@@ -1,0 +1,549 @@
+---
+title: "Task 1 Final"
+author: "Augusto Fonseca, Paul Sharratt, Niklas Pawelzik, Justus v. Samson-Himmelstjerna"
+date: "2022-12-20"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(ggplot2)
+library(scales)
+library(haven)
+library(labelled)
+library(ggridges)
+library(zoo)
+library(leaflet)
+library(leaflet.extras)
+library(geojsonio)
+```
+
+```{r load data}
+# load data
+survey_df <- readRDS("../survey/meof_usa_survey_df.RDS")
+time_zones_df <- readRDS("../time_zones/time_zones.RDS")
+tracking_df <- readRDS("../tracking/meof_usa_web_df.RDS")
+```
+
+## Task 1.1 - Identifying respondents' YouGov navigation during the survey interval
+
+Author: Augusto Fonseca
+
+The web-tracking data coincides with the fielding of the fourth wave of the survey.
+Provide a visualization following the best practices illustrating the breakdown of the three groups in the data:
+
+• Survey respondents who visit "yougov" during the survey interval • Survey respondents who do not visit "yougov" during the survey interval • Participants who provided tracking data, but did not participate in the survey
+
+The visualization should function as a standalone figure, explaining what it shows.
+Note that the survey is a combination of local times from the respondents' locations, and that on November 4, 2018, Daylight Saving Time ended in the U.S.
+
+RESOLUTION:
+
+The question asks to identify respondents' YouGov navigation during the survey interval.
+The survey data frame contains a start time variable and an end time variable.
+To define the "survey interval", I will get the first start time (minimum start time) and the last end-time (maximum end time) among the respondents during the 4th survey wave.
+
+Point of attention: The tracking data frame contains a variable that contains the time a person accessed a website in the UTC time zone.
+The time information presented in the survey data frame, on the other hand, is in local time.
+So, we need to convert it to the UTC timezone to allow any parsing.
+
+```{r, include = T}
+
+# upload data
+
+survey_df_w4 <- filter(survey_df, wave == 4)
+
+# Check the state and the time which the survey started.
+
+survey_start_state <- as_factor(survey_df_w4 %>%
+  select(starttime, inputstate) %>% 
+  filter(starttime == min(survey_df_w4$starttime)) %>% 
+  select(state = inputstate))
+
+survey_end_state <- as_factor(survey_df_w4 %>%
+  select(endtime, inputstate) %>% 
+  filter(endtime == max(survey_df_w4$endtime)) %>% 
+  select(state = inputstate))
+
+survey_start_time <- min(survey_df_w4$starttime) #UTC timezone
+survey_end_time <- max(survey_df_w4$endtime) #UTC timezone
+
+
+# join timezone DF to get the timezone based on the State name
+survey_start_state <- left_join(survey_start_state, time_zones_df, by = "state") 
+survey_end_state <- left_join(survey_end_state, time_zones_df, by = "state")
+
+#Using the timezone, convert the start-time and the end-time to UTC timezone
+survey_start_time <- with_tz(ymd_hms(survey_start_time, tz = survey_start_state$time_zone[1]), "UTC")
+survey_end_time <- with_tz(ymd_hms(survey_end_time, tz = survey_end_state$time_zone[1]), "UTC")
+
+# Considering that on November 4, 2018, Daylight Saving Time ended in the United States, just adjust the start time to disregard its effect. 
+
+survey_start_time <- survey_start_time - 3600 # Reduce 1 hour: 3600 seconds
+
+
+
+# Joing data frames to filter the domains accessed during the survey interval
+df_yougov <- left_join(tracking_df %>% filter (used_at >= survey_start_time & used_at <= survey_end_time), survey_df_w4 %>% select(personid, wave, inputstate), by = "personid")
+
+#Fill NA in wave - For those who didn´t respond to the survey
+df_yougov$wave[is.na(df_yougov$wave)] <- 0
+
+# create a variable to check if the domain contains yougov
+df_yougov2 <- df_yougov %>% 
+  add_column(yougov = str_detect(df_yougov$domain,'yougov'))
+
+df_yougov2 <- df_yougov2 %>%
+  mutate(
+    respondents_class = case_when(
+    ((wave == 4) & (yougov == TRUE)) ~ "Respondent and accessed Yougov",
+    ((wave == 4) & (yougov == FALSE)) ~ "Respondent, but have not accessed Yougov",
+    (wave == 0) ~ "Not respondent, but accessed Yougov")
+    ) %>% 
+  mutate(
+    class_number = case_when(
+    ((wave == 4) &  (yougov == TRUE)) ~ 1,
+    ((wave == 4) & (yougov == FALSE)) ~ 2,
+    (wave == 0) ~ 3)
+    ) 
+
+# Create a DF to remove duplicates
+df_yougov3 <- df_yougov2 %>% 
+  select(personid,class_number, respondents_class) %>%
+  unique
+
+# order by the class and remove duplicated entries
+df_yougov3 <- df_yougov3[order(df_yougov3$personid, df_yougov3$class_number),]
+df_yougov3 <- df_yougov3 %>% distinct(personid, .keep_all = TRUE)
+
+
+df_yougov3 <- df_yougov3 %>% 
+  group_by(class_number, respondents_class) %>% 
+  summarise(num_ids = n())
+
+
+
+
+# Bar plot with the share
+plot1 <- ggplot(df_yougov3, aes(x=class_number, y=num_ids, fill=respondents_class)) +
+  geom_bar(width = 1, stat = "identity")+
+  geom_text(aes(label=num_ids), vjust=-0.3, size=3.5)+
+  ggtitle("Respondents distribution during 4th survey wave")+
+  xlab("Type of respondent") +
+  ylab("Number of people")+
+  scale_fill_brewer(palette="Blues")+
+  theme_minimal()+
+  theme(panel.border = element_blank(),
+        panel.grid=element_blank(),
+        axis.ticks = element_blank(),
+        plot.title=element_text(size=14, face="bold"))
+print(plot1)
+
+
+```
+
+## Task 1.2 - Writing a function to explore the distribution of answers for a given question on each of the survey waves
+
+Author: Paul Sharratt
+
+Writing a function to explore the distribution of answers for a given question on each of the survey waves
+
+Write a function to illustrate the distribution of answers for a given discrete choice question (not: questions with open text) on each of the survey waves.
+The function should:
+
+• take the data frame and survey item as arguments.
+• return a small multiple barplot grouped at the survey wave-level with the answer option counts (including NAs).
+• present the original survey question (label) and the variable name in the title of the plot.
+• graph the value labels in the answer tick axis (i.e., in presvote16post, you would want "Hillary Clinton","Donald Trump", etc., rather than the numbers representing these values) • stop if the input variable is not a labelled \<dbl+lbl\> type.
+
+Prove the correct behavior of the function with at least three survey questions.
+
+```{r}
+
+distribution_function <- function(data, item){
+  item_qs <- deparse(substitute(item))  # assigning item as a quoted object
+  
+if (sum(class(data%>%pull(item_qs)) %in% c("haven_labelled", "vctrs_vctr", "double" )) == 3 )
+  # checking if item_qs is <dbl+lbl> by checking class labels, can't use str() and indexing
+  {
+    data[[item_qs]] <- haven::as_factor(data[[item_qs]]) # using haven as_factor function 
+    ggplot(data,     # creating a small multiples plot
+           aes(x = {{item}})) + # passing unquoted variables using {{}}
+      geom_bar() +
+      scale_x_discrete() +
+      theme_test() +
+      coord_flip() +
+      labs(title = strwrap(paste0(attributes(survey_df[[item_qs]])$label)), # using 'label' from item_qs attributes for title
+       x = item_qs, 
+       y = "Frequency") +
+      facet_wrap(~wave, nrow = 3) 
+    } else {
+      stop("The input variable is not a labelled <dbl+lbl> type.")
+      }
+}
+
+# testing the function
+distribution_function(survey_df, pid3)
+
+distribution_function(survey_df, pid7)
+
+distribution_function(survey_df, ideo5)
+
+# Note: almost certain there's a way to make this work with sjlabelle package, but couldn't get it to work. 
+
+```
+
+## Task 1.3 - Distribution of Netflix activity throughout the day by the weekday
+
+Author: Niklas Pawelzik
+
+Illustrate with a ridgeplot the distribution of Netflix activity throughout the day by weekday following good practice of visualizations.
+For this plot you should:
+
+• match each respondent with their first logged state of residence in the survey.
+• update the time of each web activity based on the user's home state and the respective time zone in times_zones.RDS.
+• add vertical lines at the quartiles.
+• provide a title and description, making it a standalone figure that speaks for itself.
+
+```{r}
+survey_df$inputstate <- 
+  case_when(survey_df$inputstate == 1 ~ "Alabama",
+            survey_df$inputstate == 2 ~ "Alaska",
+            survey_df$inputstate == 4 ~ "Arizona",
+            survey_df$inputstate == 5 ~ "Arkansas",
+            survey_df$inputstate == 6 ~ "California",
+            survey_df$inputstate == 8 ~ "Colorado",
+            survey_df$inputstate == 9 ~ "Connecticut",
+            survey_df$inputstate == 10 ~ "Delaware",
+            survey_df$inputstate == 11 ~ "District of Columbia",
+            survey_df$inputstate == 12 ~ "Florida",
+            survey_df$inputstate == 13 ~ "Georgia",
+            survey_df$inputstate == 15 ~ "Hawaii",
+            survey_df$inputstate == 16 ~ "Idaho",
+            survey_df$inputstate == 17 ~ "Illinois",
+            survey_df$inputstate == 18 ~ "Indiana",
+            survey_df$inputstate == 19 ~ "Iowa",
+            survey_df$inputstate == 20 ~ "Kansas",
+            survey_df$inputstate == 21 ~ "Kentucky",
+            survey_df$inputstate == 22 ~ "Louisiana",
+            survey_df$inputstate == 23 ~ "Maine",
+            survey_df$inputstate == 24 ~ "Maryland",
+            survey_df$inputstate == 25 ~ "Massachusetts",
+            survey_df$inputstate == 26 ~ "Michigan",
+            survey_df$inputstate == 27 ~ "Minnesota",
+            survey_df$inputstate == 28 ~ "Mississippi",
+            survey_df$inputstate == 29 ~ "Missouri",
+            survey_df$inputstate == 30 ~ "Montana",
+            survey_df$inputstate == 31 ~ "Nebraska",
+            survey_df$inputstate == 32 ~ "Nevada",
+            survey_df$inputstate == 33 ~ "New Hampshire",
+            survey_df$inputstate == 34 ~ "New Jersey",
+            survey_df$inputstate == 35 ~ "New Mexico",
+            survey_df$inputstate == 36 ~ "New York",
+            survey_df$inputstate == 37 ~ "North Carolina",
+            survey_df$inputstate == 38 ~ "North Dakota",
+            survey_df$inputstate == 39 ~ "Ohio",
+            survey_df$inputstate == 40 ~ "Oklahoma",
+            survey_df$inputstate == 41 ~ "Oregon",
+            survey_df$inputstate == 42 ~ "Pennsylvania",
+            survey_df$inputstate == 44 ~ "Rhode Island",
+            survey_df$inputstate == 45 ~ "South Carolina",
+            survey_df$inputstate == 46 ~ "South Dakota",
+            survey_df$inputstate == 47 ~ "Tennessee",
+            survey_df$inputstate == 48 ~ "Texas",
+            survey_df$inputstate == 49 ~ "Utah",
+            survey_df$inputstate == 50 ~ "Vermont",
+            survey_df$inputstate == 51 ~ "Virginia",
+            survey_df$inputstate == 53 ~ "Washington",
+            survey_df$inputstate == 54 ~ "West Virginia",
+            survey_df$inputstate == 55 ~ "Wisconsin",
+            survey_df$inputstate == 56 ~ "Wyoming",
+            survey_df$inputstate == 60 ~ "American Samoa",
+            survey_df$inputstate == 64 ~ "Federated States of Micronesia",
+            survey_df$inputstate == 66 ~ "Guam",
+            survey_df$inputstate == 68 ~ "Marshall Islands",
+            survey_df$inputstate == 69 ~ "Northern Mariana Islands",
+            survey_df$inputstate == 70 ~ "Palau",
+            survey_df$inputstate == 72 ~ "Puerto Rico",
+            survey_df$inputstate == 74 ~ "U.S. Minor Outlying Islands",
+            survey_df$inputstate == 78 ~ "Virgin Islands",
+            survey_df$inputstate == 81 ~ "Alberta",
+            survey_df$inputstate == 82 ~ "British Columbia",
+            survey_df$inputstate == 83 ~ "Manitoba",
+            survey_df$inputstate == 84 ~ "New Brunswick",
+            survey_df$inputstate == 85 ~ "Newfoundland",
+            survey_df$inputstate == 86 ~ "Northwest Territories",
+            survey_df$inputstate == 87 ~ "Nova Scotia",
+            survey_df$inputstate == 88 ~ "Nunavut",
+            survey_df$inputstate == 89 ~ "Ontario",
+            survey_df$inputstate == 90 ~ "Prince Edward Island",
+            survey_df$inputstate == 91 ~ "Quebec",
+            survey_df$inputstate == 92 ~ "Saskatchewan",
+            survey_df$inputstate == 93 ~ "Yukon Territory")
+
+```
+
+```{r}
+# identify first logged state of residence in the survey
+## filter for one match per "personid", displaying the lowest number of "wave" for which we have a value in "inputstate" 
+earliest_inputstate <- survey_df %>%
+  filter(!is.na(inputstate))%>%
+  group_by(personid)%>%
+  arrange(wave) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(personid, inputstate)
+
+# update the time of each web activity based on the user‘s home state and the respective time zone in times_zones.RDS
+
+earliest_inputstate <- earliest_inputstate %>% 
+    rename("state" = "inputstate")
+
+earliest_inputstate <- merge(x=earliest_inputstate, y=time_zones_df, by= "state", all.x=TRUE)
+```
+
+```{r}
+# search for netflix use and create data frame
+netflix_use <- tracking_df[tracking_df$domain=='netflix' | grepl('netflix',tracking_df$domain), ]
+
+netflix_use <- merge(x=netflix_use, y=earliest_inputstate, by= "personid", all.x=TRUE)
+```
+
+```{r}
+# set duration to "second" instead of minutes
+netflix_use$duration <- netflix_use$duration * 60
+# create end_date column
+netflix_use$stopped_use_at <- netflix_use$used_at + netflix_use$duration
+# create weekday column
+netflix_use$weekday_used <- weekdays(netflix_use$used_at)
+
+# rename weekdays
+netflix_use$weekday_used[netflix_use$weekday_used == 'Montag'] <- 'Monday'
+netflix_use$weekday_used[netflix_use$weekday_used == 'Dienstag'] <- 'Tuesday'
+netflix_use$weekday_used[netflix_use$weekday_used == 'Mittwoch'] <- 'Wednesday'
+netflix_use$weekday_used[netflix_use$weekday_used == 'Donnerstag'] <- 'Thursday'
+netflix_use$weekday_used[netflix_use$weekday_used == 'Freitag'] <- 'Friday'
+netflix_use$weekday_used[netflix_use$weekday_used == 'Samstag'] <- 'Saturday'
+netflix_use$weekday_used[netflix_use$weekday_used == 'Sonntag'] <- 'Sunday'
+
+# isolate_day_time_hour
+netflix_use$hour_used <- hour(netflix_use$used_at)
+
+# isolate_day_time_minute
+netflix_use$minute_used <- minute(netflix_use$used_at)
+
+# isolate_day_time_second
+netflix_use$second_used <- second(netflix_use$used_at)
+
+netflix_use$day_time_used <- hms(paste(netflix_use$hour_used, netflix_use$minute_used, netflix_use$second_used, sep = ":"))
+
+netflix_use$day_time_used_2 <- hms::as_hms(netflix_use$used_at)
+
+netflix_use$day_time_used_local_time_2 <- hms::as_hms(netflix_use$used_at_local_time)
+```
+
+```{r}
+# change UTC to state time zones
+# (Credit to fellow-student Armin, function comes from him):
+local_time <- Vectorize(function(x,y){format(x, tz=y, usetz=TRUE)})
+
+netflix_use <- netflix_use %>%
+  mutate(
+    used_at_local_time = map2(.x = used_at, .y = time_zone, .f = local_time)
+  )
+
+netflix_use <- netflix_use %>%
+  unnest(used_at_local_time)
+
+netflix_use$used_at_local_time <- as.POSIXct(netflix_use$used_at_local_time, format = "%Y-%m-%d %H:%M:%S")
+```
+
+```{r}
+netflix_use$adapted_dates <- as.POSIXct(netflix_use$day_time_used_2, tz = netflix_use$time_zone)
+# %>% hms::as_hms()
+
+#restate required variable day_time_used_local_time_2
+netflix_use$day_time_used_local_time_2 <- hms::as_hms(netflix_use$used_at_local_time)
+
+```
+
+```{r}
+# Plotting
+## NOTE: As we were not perfectly clear about how to understand the time-zone part of the exercise, below we provide two plots for comparison:
+# One of them ("Times as Provided in Dataframe") uses the original times as indicated under used_at in the tracking dataset.
+# The other ("Times Changed According to Timezones Provided") uses the times according to the respective state of residence of the user.
+# Indicative for the difference is also the difference in peak Netflix time:  The first one has more evenly distributed peaks throughout the day, as different users in different time zones tend to use Netflix at different times. The second plot shows the uniform peak of Netflix access at "primetime" in the evening, roughly speaking between 6 p.m. and 11 p.m.
+
+ggplot(netflix_use, aes(x = day_time_used_local_time_2, y = weekday_used, fill = factor(stat(quantile)))) +
+  # adding vertical lines at the quartiles
+  stat_density_ridges(geom = "density_ridges_gradient", quantile_lines = TRUE,  calc_ecdf = TRUE) +
+  scale_x_continuous(limits = c(0, 86399), n.breaks = 5, breaks = c(0, 86399*0.25, 86399*0.5, 86399*0.75, 86399-60), label = c( "00:00", "06:00", "12:00", "18:00", "23:59")) +
+  scale_y_discrete(labels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")) +
+  theme_minimal() +
+  labs(title = 'Times Changed According to Timezones Provided') +
+  xlab("Time of the Day") + 
+  ylab("Day of the Week") +
+  scale_fill_viridis_d(name = "Quartiles")
+
+ggplot(netflix_use, aes(x = day_time_used_2, y = weekday_used, fill = factor(stat(quantile)))) +
+  # adding vertical lines at the quartiles
+  stat_density_ridges(geom = "density_ridges_gradient", quantile_lines = TRUE,  calc_ecdf = TRUE) +
+  # scale_x_datetime(date_breaks = "2 hours", date_labels = "%h") +
+  scale_x_continuous(limits = c(0, 86399), n.breaks = 5, breaks = c(0, 86399*0.25, 86399*0.5, 86399*0.75, 86399-60), label = c( "00:00", "06:00", "12:00", "18:00", "23:59")) +
+  scale_y_discrete(labels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")) +
+  theme_minimal() +
+  labs(title = "Times as Provided in Dataframe") +
+  xlab("Time of the Day") + 
+  ylab("Day of the Week") +
+  scale_fill_viridis_d(name = "Quartiles")
+```
+
+## Task 1.4 - Interactive map of survey entries
+
+Author: Justus v. Samson-Himmelstjerna
+
+Create an interactive leaflet map divided by states that are colored in relation to a total number of survey responses across all waves, following good practice of visualization.
+For this plot you should:
+
+• employ a color palette based on the number range of survey entries.
+• use the Stamen.Toner tile.
+• create a popup that reads "Total survey responses for (State initials): (Number)".
+
+```{r 1.4 - Interactive map of survey entries - clean data}
+# clean data in order to account for NAs in inputsate for people who most likely did not move in the meantime since they have only stated on state of residence
+
+fill_na <- function(x) {
+  # Check if the person has given exactly one state in the inputstate column
+  if (n_distinct(x) == 2) {
+    # Check if the person has given an NA in a later wave
+    if (any(is.na(x))) {
+      # Forward fill the NA values with the previous value in the inputstate column
+      x <- na.locf(x)
+    }
+  }
+  return(x)
+}
+
+# Group the dataframe by personid and apply the custom function to the inputstate column
+survey_df_cleaned <- survey_df %>%
+  group_by(personid) %>%
+  mutate(inputstate = fill_na(inputstate)) %>%
+  ungroup()
+```
+
+```{r 1.4 - Interactive map of survey entries - survey responses}
+# Get the total number of survey responses by state
+survey_by_state <- survey_df_cleaned %>% 
+  group_by(inputstate) %>% 
+  summarise(total_responses = n()) %>% 
+  drop_na(inputstate)
+
+# change numeriv values to state names
+survey_by_state$inputstate <- 
+  case_when(survey_by_state$inputstate == 1 ~ "Alabama",
+            survey_by_state$inputstate == 2 ~ "Alaska",
+            survey_by_state$inputstate == 4 ~ "Arizona",
+            survey_by_state$inputstate == 5 ~ "Arkansas",
+            survey_by_state$inputstate == 6 ~ "California",
+            survey_by_state$inputstate == 8 ~ "Colorado",
+            survey_by_state$inputstate == 9 ~ "Connecticut",
+            survey_by_state$inputstate == 10 ~ "Delaware",
+            survey_by_state$inputstate == 11 ~ "District of Columbia",
+            survey_by_state$inputstate == 12 ~ "Florida",
+            survey_by_state$inputstate == 13 ~ "Georgia",
+            survey_by_state$inputstate == 15 ~ "Hawaii",
+            survey_by_state$inputstate == 16 ~ "Idaho",
+            survey_by_state$inputstate == 17 ~ "Illinois",
+            survey_by_state$inputstate == 18 ~ "Indiana",
+            survey_by_state$inputstate == 19 ~ "Iowa",
+            survey_by_state$inputstate == 20 ~ "Kansas",
+            survey_by_state$inputstate == 21 ~ "Kentucky",
+            survey_by_state$inputstate == 22 ~ "Louisiana",
+            survey_by_state$inputstate == 23 ~ "Maine",
+            survey_by_state$inputstate == 24 ~ "Maryland",
+            survey_by_state$inputstate == 25 ~ "Massachusetts",
+            survey_by_state$inputstate == 26 ~ "Michigan",
+            survey_by_state$inputstate == 27 ~ "Minnesota",
+            survey_by_state$inputstate == 28 ~ "Mississippi",
+            survey_by_state$inputstate == 29 ~ "Missouri",
+            survey_by_state$inputstate == 30 ~ "Montana",
+            survey_by_state$inputstate == 31 ~ "Nebraska",
+            survey_by_state$inputstate == 32 ~ "Nevada",
+            survey_by_state$inputstate == 33 ~ "New Hampshire",
+            survey_by_state$inputstate == 34 ~ "New Jersey",
+            survey_by_state$inputstate == 35 ~ "New Mexico",
+            survey_by_state$inputstate == 36 ~ "New York",
+            survey_by_state$inputstate == 37 ~ "North Carolina",
+            survey_by_state$inputstate == 38 ~ "North Dakota",
+            survey_by_state$inputstate == 39 ~ "Ohio",
+            survey_by_state$inputstate == 40 ~ "Oklahoma",
+            survey_by_state$inputstate == 41 ~ "Oregon",
+            survey_by_state$inputstate == 42 ~ "Pennsylvania",
+            survey_by_state$inputstate == 44 ~ "Rhode Island",
+            survey_by_state$inputstate == 45 ~ "South Carolina",
+            survey_by_state$inputstate == 46 ~ "South Dakota",
+            survey_by_state$inputstate == 47 ~ "Tennessee",
+            survey_by_state$inputstate == 48 ~ "Texas",
+            survey_by_state$inputstate == 49 ~ "Utah",
+            survey_by_state$inputstate == 50 ~ "Vermont",
+            survey_by_state$inputstate == 51 ~ "Virginia",
+            survey_by_state$inputstate == 53 ~ "Washington",
+            survey_by_state$inputstate == 54 ~ "West Virginia",
+            survey_by_state$inputstate == 55 ~ "Wisconsin",
+            survey_by_state$inputstate == 56 ~ "Wyoming",
+            survey_by_state$inputstate == 60 ~ "American Samoa",
+            survey_by_state$inputstate == 64 ~ "Federated States of Micronesia",
+            survey_by_state$inputstate == 66 ~ "Guam",
+            survey_by_state$inputstate == 68 ~ "Marshall Islands",
+            survey_by_state$inputstate == 69 ~ "Northern Mariana Islands",
+            survey_by_state$inputstate == 70 ~ "Palau",
+            survey_by_state$inputstate == 72 ~ "Puerto Rico",
+            survey_by_state$inputstate == 74 ~ "U.S. Minor Outlying Islands",
+            survey_by_state$inputstate == 78 ~ "Virgin Islands",
+            survey_by_state$inputstate == 81 ~ "Alberta",
+            survey_by_state$inputstate == 82 ~ "British Columbia",
+            survey_by_state$inputstate == 83 ~ "Manitoba",
+            survey_by_state$inputstate == 84 ~ "New Brunswick",
+            survey_by_state$inputstate == 85 ~ "Newfoundland",
+            survey_by_state$inputstate == 86 ~ "Northwest Territories",
+            survey_by_state$inputstate == 87 ~ "Nova Scotia",
+            survey_by_state$inputstate == 88 ~ "Nunavut",
+            survey_by_state$inputstate == 89 ~ "Ontario",
+            survey_by_state$inputstate == 90 ~ "Prince Edward Island",
+            survey_by_state$inputstate == 91 ~ "Quebec",
+            survey_by_state$inputstate == 92 ~ "Saskatchewan",
+            survey_by_state$inputstate == 93 ~ "Yukon Territory")
+
+# Create a new column for State initials
+survey_by_state$state_initials <- map_chr(survey_by_state$inputstate,
+                                        ~state.abb[match(.x, state.name)])
+# Adding DC since it had ben dropped for some reason
+survey_by_state$state_initials[9] <- "DC"
+
+# loading the data from JSON on US states
+states <- geojsonio::geojson_read("https://rstudio.github.io/leaflet/json/us-states.geojson", what = "sp")
+```
+
+```{r 1.4 - Interactive map of survey entries - interactive leaflet map}
+# Create a color palette based on the number range of survey entries
+color_palette <- colorQuantile("YlOrRd", survey_by_state$total_responses,
+                               n = 9)
+
+# Create an interactive leaflet map divided by states
+leaflet(data = survey_by_state) %>%
+  addProviderTiles(providers$Stamen.Toner) %>%
+   addPolygons(data = states, 
+               fillColor = ~color_palette(survey_by_state$total_responses),
+               color = "white", weight = 0.5,
+              popup = paste("Total survey responses for",
+                            survey_by_state$state_initials,
+                            ":",
+                            survey_by_state$total_responses))
+# since the colorQuantile function is only able to give a legend as probability ranges in percentage (which I find confusing) therefore I have decided to not include a legend. The other option would be to use colorNumeric, however, this has the downside of giving a smaller colour range. This would decrease the informational value of the map in my opinion.```
+```

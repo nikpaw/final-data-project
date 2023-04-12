@@ -1,0 +1,139 @@
+---
+title: "1.2 - survey-wave-function"
+author: "Paul Sharratt"
+date: "2022-12-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Task 1.2
+
+Writing a function to explore the distribution of answers for a given question on each of the survey waves
+
+Write a function to illustrate the distribution of answers for a given discrete choice question (not: questions with open text) on each of the survey waves. The function should:
+
+• take the data frame and survey item as arguments.
+• return a small multiple barplot grouped at the survey wave-level with the answer
+option counts (including NAs).
+• present the original survey question (label) and the variable name in the title of the plot.
+• graph the value labels in the answer tick axis (i.e., in presvote16post, you would want “Hillary Clinton”,“Donald Trump”, etc., rather than the numbers representing these values)
+• stop if the input variable is not a labelled <dbl+lbl> type.
+
+Prove the correct behavior of the function with at least three survey questions.
+
+```{r packages}
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(haven)
+library(labelled)
+```
+
+
+```{r loading data}
+
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../../tracking/meof_usa_web_df.RDS")
+
+```
+
+
+```{r trying to get basic idea to work}
+
+# return a small multiple barplot grouped at the survey wave-level with the answer
+# option counts (including NAs).
+
+survey_df_pid3 <- survey_df %>%
+  select(wave, pid3, personid) %>%
+  filter(pid3 != 32766 | 32767) %>%
+  filter(wave == 1)
+
+dem_count_w1 <- sum(survey_df_pid3$pid3 == 1)
+rep_count_w1 <- sum(survey_df_pid3$pid3 == 2)
+indp_count_w1 <- sum(survey_df_pid3$pid3 == 3)
+counts <- c(dem_count_w1, rep_count_w1, indp_count_w1)
+# doesn't account for the different waves.
+
+counts_df <- as.data.frame(counts)
+parties <- c("Democrat", "Republican", "Independent")
+rownames(counts_df) <- parties
+
+barplot(counts_df$counts, names.arg = parties)
+
+
+```
+
+```{r specifying for all waves & getting a small multiple barplot}
+
+survey_df_all_waves <- survey_df %>%
+  select(wave, pid3) %>%
+  filter(pid3 != 32766 | 32767) %>%
+  group_by(wave) %>%
+  summarise(democrats = sum(pid3 == 1),
+            republicans = sum(pid3 == 2),
+            independents = sum(pid3 == 3))
+
+survey_df_all_waves_long <- pivot_longer(survey_df_all_waves, c("democrats", "republicans", "independents"), names_to = "party", values_to = "count")
+
+ggplot(data = survey_df_all_waves_long, aes(x = party, y = count)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~wave) +  
+  labs(title = "Party identification, 3 point",
+       x = "Parties",
+       y = "Number of Respondents")
+
+
+
+```
+
+
+
+
+   
+
+
+```{r 1.2 - distribution function}
+
+distribution_function <- function(data, item){
+
+  item_qs <- deparse(substitute(item))  # assign item as quoted object
+  
+if (sum(class(data%>%pull(item_qs)) %in% c("haven_labelled", "vctrs_vctr", "double" )) == 3 )
+  # checking if item_qs is <dbl+lbl> by checking class labels, can't use str() and indexing
+  {
+    data[[item_qs]] <- haven::as_factor(data[[item_qs]]) # using haven as_factor function 
+    ggplot(data,     # creating a small multiples plot
+           aes(x = {{item}})) + # passing unquoted variables using {{}}
+      geom_bar() +
+      scale_x_discrete() +
+      theme_test() +
+      coord_flip() +
+      labs(title = paste0(attributes(survey_df[[item_qs]])$label), # using 'label' from item_qs attributes for title
+       x = item_qs, 
+       y = "Number of respondents") +
+      facet_wrap(~wave, nrow = 3) 
+    } else {
+      stop("The input variable is not a labelled <dbl+lbl> type.")
+      }
+}
+
+distribution_function(survey_df, pid3)
+
+distribution_function (survey_df, approval_trump)
+
+distribution_function (survey_df, ideo5)
+
+
+class(survey_df$pid3)
+
+```
+
+
+
+
+

@@ -1,0 +1,119 @@
+---
+title: "visualization-party-affiliation"
+author: "Paul Sharratt"
+date: "2022-12-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(scales)
+```
+
+```{r}
+
+survey_df <- readRDS("../../survey/meof_usa_survey_df.RDS")
+tracking_df <- readRDS("../../tracking/meof_usa_web_df.RDS")
+
+tracking_df_facts <- readRDS(file = "../../tracking/tracking_df_facts.RDS")
+
+tracking_df_only_facts <- tracking_df_facts %>%
+  select(personid, fact_check_usage, fact_check_site) %>%
+  unique()
+
+# combined survey & tracking data general
+tracking_survey_combined_facts <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage))
+
+# fact checkers
+tracking_survey_combined_facts_users_pid7 <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage)) %>%
+  filter(fact_check_usage == 1) %>%
+  filter(wave == 1) %>%
+  select(pid7, wave)
+
+# not fact checkers
+tracking_survey_combined_facts_non_pid7 <- survey_df %>%
+  left_join(., tracking_df_only_facts, 'personid') %>%
+  filter(!is.na(fact_check_usage)) %>%
+  filter(fact_check_usage == 0) %>%
+  filter(wave == 1) %>%
+  select(pid7, wave) %>%
+  count(pid7, wave)
+
+```
+
+
+```{r}
+pid7_labels <- haven::as_factor(tracking_survey_combined_facts_non_pid7$pid7)
+              
+pid7_labels_df <- as.data.frame(pid7_labels) %>%
+  count(pid7_labels) %>%
+    mutate(
+  percentage_share = label_percent()(n / sum(n))
+  )
+
+
+val_labels(tracking_survey_combined_facts_non_pid7$pid7)
+
+
+```
+
+```{r}
+
+ggplot(data,
+           aes(x = {{survey_item}})) + # passing unquoted variables
+      geom_bar() +
+
+
+ggplot(pid7_labels_df, aes(x = percentage_share)) + 
+    geom_bar() +
+#    scale_fill_manual("Sex", values=c("#00CC99","#6600FF")) +
+    scale_x_discrete(labels = pid7_labels) +
+#    scale_y_continuous("Share of Total Legislators", labels = percent_format(scale = 100)) +
+    ggtitle("Sexes of MPs in Percent per Session of the Bundestag") +
+    coord_flip()
+
+
+```
+
+```{r}
+
+show_distribution_original <- function(data, survey_item){
+  
+  # Save survey item as quoted object
+  survey_item_quotes <- deparse(substitute(survey_item))
+  
+  if(class(data[[survey_item_quotes]])[1] == "haven_labelled"){
+    data[[survey_item_quotes]] <- haven::as_factor(data[[survey_item_quotes]])
+    
+    # Create multiples plot
+    ggplot(data,
+           aes(x = {{survey_item}})) + # passing unquoted variables
+      
+      geom_bar() +
+      
+      scale_x_discrete()+
+      
+      labs(title = paste0(attributes(survey_df[[survey_item_quotes]])$label),
+       caption = "",
+       x = survey_item_quotes,
+       y = "frequency") +
+      
+      theme_light() +
+      coord_flip() +
+      
+      facet_wrap(~wave, nrow = 2)
+    
+    } else {
+      stop("input variable is not of type <dbl+lbl>")
+      }
+}
+
+show_distribution_original(survey_df, pid3)
+
+```
+
