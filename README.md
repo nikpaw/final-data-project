@@ -1,4 +1,4 @@
-# Introduction to Data Science: Final data project
+# Alternative Headline: Introduction to Data Science: Final data project
 
 This repository contains code, data, and documentation for the final data project.
 
